@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: status-api-deployment
+  labels:
+    app: status-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: status-api
+  template:
+    metadata:
+      labels:
+        app: status-api
+    spec:
+      containers:
+        - name: status-api-container
+          image: 647097321691.dkr.ecr.us-east-1.amazonaws.com/eks-kubernetes-status-api:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: APP_ENV
+              value: "dev"
