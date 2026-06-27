@@ -1,0 +1,61 @@
+name: Build and Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: eks-kubernetes-status-api
+  EKS_CLUSTER_NAME: status-api-eks-cluster
+  K8S_DEPLOYMENT_NAME: status-api-deployment
+  K8S_CONTAINER_NAME: status-api-container
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build Docker Image and Deploy to EKS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::647097321691:role/eks-kubernetes-status-api-github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE_URI=647097321691.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}
+
+          docker buildx build \
+            --platform linux/amd64 \
+            -t $IMAGE_URI:latest \
+            -t $IMAGE_URI:${{ github.sha }} \
+            --push .
+
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Deploy new image to EKS
+        run: |
+          kubectl set image deployment/${{ env.K8S_DEPLOYMENT_NAME }} \
+            ${{ env.K8S_CONTAINER_NAME }}=${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }}
+
+          kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT_NAME }}
